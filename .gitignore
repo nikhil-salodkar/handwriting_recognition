@@ -1,3 +1,4 @@
-./data/
-./lightning_logs
-./notebooks/nohup.out
+data/
+lightning_logs/
+notebooks/nohup.out
+.idea/

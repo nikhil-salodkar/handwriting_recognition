@@ -1,103 +1,89 @@
 import os
-import pickle
 from typing import Optional
 
+import pandas as pd
 import pytorch_lightning as pl
-import torch
+from PIL import Image
 
 from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import Compose, Resize, ToTensor, Grayscale
 
 
 class Kaggle_handwritten_names(Dataset):
-    '''
-    To solve Sequential Sentence classification problem.
-    '''
-    def __init__(self, data):
+    def __init__(self, data, transforms, img_path):
         self.data = data
+        self.transforms = transforms
+        self.img_path = img_path
 
     def __len__(self):
         return self.data.shape[0]
 
     def __getitem__(self, index):
         row = self.data.iloc[index]
-        image_name = row['FILENAME']
+        file_name = row['FILENAME']
         image_label = row['IDENTITY']
-
+        the_image = Image.open(os.path.join(self.img_path, file_name))
+        transformed_image = self.transforms(the_image)
+        label_seq = [image_label]
         return {
-            'input_ids': tokenized_article['input_ids'],
-            'attention_mask': tokenized_article['attention_mask'],
-            'special_mask': list(special_mask),
-            'targets': label_indexes
+            'transformed_image': transformed_image,
+            'label': label_seq
         }
 
 
-class RCTSequentialSentenceDataModule(pl.LightningDataModule):
-    def __init__(self, train_data, val_data, tokenizer, train_batch=16, val_batch=64):
+class KaggleHandwritingDataModule(pl.LightningDataModule):
+    def __init__(self, train_data, val_data, hparams):
         super().__init__()
         self.train_data = train_data
         self.val_data = val_data
-        self.train_batch_size = train_batch
-        self.val_batch_size = val_batch
-        self.tokenizer = tokenizer
+        self.train_batch_size = hparams['train_batch_size']
+        self.val_batch_size = hparams['val_batch_size']
+        self.transforms = Compose([Resize((hparams['input_height'], hparams['input_height'])), Grayscale(),
+                                   ToTensor()])
+        self.train_img_path = hparams['train_img_path']
+        self.val_img_path = hparams['val_img_path']
 
     def setup(self, stage: Optional[str] = None):
         if stage == 'fit' or stage is None:
-            self.train = RCTSequentialSentenceDataset(self.train_data, self.tokenizer)
-            self.val = RCTSequentialSentenceDataset(self.val_data, self.tokenizer)
-
-    def custom_collate(data):
-        input_ids = []
-        attention_mask = []
-        special_mask = []
-        targets = []
-        for d in data:
-            if d is not None:
-                input_ids.append(torch.tensor(d['input_ids']))
-                attention_mask.append(torch.tensor(d['attention_mask']))
-                special_mask.append(torch.tensor(d['special_mask'], dtype=torch.bool))
-                targets = targets + d['targets']
-            else:
-                continue
-        input_ids = pad_sequence(input_ids, batch_first=True, padding_value=1)
-        attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
-        special_mask = pad_sequence(special_mask, batch_first=True, padding_value=0)
-        return {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'special_mask': special_mask,
-            'target': torch.tensor(targets)
-        }
+            self.train = Kaggle_handwritten_names(self.train_data, self.transforms, self.train_img_path)
+            self.val = Kaggle_handwritten_names(self.val_data, self.transforms, self.val_img_path)
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.train_batch_size, shuffle=True, pin_memory=True,
-                          num_workers=8, collate_fn=RCTSequentialSentenceDataModule.custom_collate)
+                          num_workers=8)
 
     def val_dataloader(self):
         return DataLoader(self.val, batch_size=self.val_batch_size, shuffle=False, pin_memory=True,
-                          num_workers=8, collate_fn=RCTSequentialSentenceDataModule.custom_collate)
+                          num_workers=8)
 
 
-def test_rct():
+def test_kaggle_handwritting():
     pl.seed_everything(567)
-    with open(os.path.join('./datasets/biomedical/RCT/', 'rct_train_dict.pkl'), 'rb') as f:
-        train_data = pickle.load(f)
-    with open(os.path.join('./datasets/biomedical/RCT/', 'rct_dev_dict.pkl'), 'rb') as f:
-        val_data = pickle.load(f)
-    tokenizer = AutoTokenizer.from_pretrained(os.path.join('./pretrained_models/roberta-base'))
-    special_tokens_dict = {'additional_special_tokens': ['<sentence_sep>']}
-    num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
-    sample_module = RCTSequentialSentenceDataModule(train_data, val_data, tokenizer, train_batch=8)
-    # the_dataset = RCTSequentialSentenceDataset(data, tokenizer)
-    # return_dict = the_dataset[0]
+    hparams = {
+        'train_img_path': './data/kaggle-handwriting-recognition/train_v2/train/',
+        'lr': 1e-3, 'val_img_path': './data/kaggle-handwriting-recognition/validation_v2/validation/',
+        'test_img_path': './data/kaggle-handwriting-recognition/test_v2/test/',
+        'data_path': './data/kaggle-handwriting-recognition',
+        'train_batch_size': 64, 'val_batch_size': 1024, 'input_height': 128
+    }
+    train_df = pd.read_csv(os.path.join(hparams['data_path'], 'train_new.csv'))
+    train_df = train_df[train_df.word_type == 'normal_word']
+    train_df = train_df.sample(frac=1).reset_index(drop=True)
+    val_df = pd.read_csv(os.path.join(hparams['data_path'], 'val_new.csv'))
+    val_df = val_df[val_df.word_type == 'normal_word']
+    val_df = val_df.sample(frac=1).reset_index(drop=True)
+    sample_module = KaggleHandwritingDataModule(train_df, val_df, hparams)
     sample_module.setup()
-    sample_batch = next(iter(sample_module.train_dataloader()))
-    print(sample_batch['input_ids'].shape)
-    print(sample_batch['attention_mask'].shape)
-    print(sample_batch['special_mask'].shape)
-    print(len(sample_batch['special_mask']))
-    print(sample_batch['target'].shape)
-    print(sample_batch)
+    sample_train_module = sample_module.train_dataloader()
+    sample_val_module = sample_module.val_dataloader()
+    sample_train_batch = next(iter(sample_train_module))
+    sample_val_batch = next(iter(sample_val_module))
+    print(sample_train_batch['transformed_image'].shape)
+    print(sample_val_batch['transformed_image'].shape)
+    print(sample_train_batch)
+    print("sample_val_batch is:", sample_val_batch)
+
 
 
 if __name__ == '__main__':
-    test_rct()
+    test_kaggle_handwritting()

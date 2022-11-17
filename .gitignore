@@ -2,3 +2,4 @@ data/
 lightning_logs/
 notebooks/nohup.out
 .idea/
+__pycache__/

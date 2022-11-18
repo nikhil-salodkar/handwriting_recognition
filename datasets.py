@@ -27,11 +27,13 @@ class KaggleHandwrittenNames(Dataset):
         image_label = row['IDENTITY']
         the_image = Image.open(os.path.join(self.img_path, file_name))
         transformed_image = self.transforms(the_image)
-        label_chars = list(image_label) + ['end_seq']
+        target_len = len(image_label)
+        label_chars = list(image_label)
         image_label = torch.tensor([self.label_to_index[char] for char in label_chars])
         return {
             'transformed_image': transformed_image,
-            'label': image_label
+            'label': image_label,
+            'target_len': target_len
         }
 
 
@@ -55,19 +57,22 @@ class KaggleHandwritingDataModule(pl.LightningDataModule):
 
     def custom_collate(data):
         '''
-        To handle variable max seq length batch size for better training efficiency and dynamic padding of
-        sequences
+        To handle variable max seq length batch size
         '''
         transformed_images = []
         labels = []
+        target_lens = []
         for d in data:
             transformed_images.append(d['transformed_image'])
             labels.append(d['label'])
+            target_lens.append(d['target_len'])
         batch_labels = pad_sequence(labels, batch_first=True, padding_value=-1)
         transformed_images = torch.stack(transformed_images)
+        target_lens = torch.tensor(target_lens)
         return {
             'transformed_images': transformed_images,
-            'labels': batch_labels
+            'labels': batch_labels,
+            'target_lens': target_lens
         }
 
     def train_dataloader(self):
@@ -90,7 +95,7 @@ def test_kaggle_handwritting():
     }
     label_to_index = {' ': 0, '-': 1, 'A': 2, 'B': 3, 'C': 4, 'D': 5, 'E': 6, 'F': 7, 'G': 8, 'H': 9, 'I': 10, 'J': 11,
                       'K': 12, 'L': 13, 'M': 14, 'N': 15, 'O': 16, 'P': 17, 'Q': 18, 'R': 19, 'S': 20, 'T': 21, 'U': 22,
-                      'V': 23, 'W': 24, 'X': 25, 'Y': 26, 'Z': 27, 'end_seq': 28}
+                      'V': 23, 'W': 24, 'X': 25, 'Y': 26, 'Z': 27}
 
     train_df = pd.read_csv(os.path.join(hparams['data_path'], 'train_new.csv'))
     train_df = train_df[train_df.word_type == 'normal_word']
@@ -112,7 +117,8 @@ def test_kaggle_handwritting():
     print(sample_val_batch['transformed_images'].shape)
     print(sample_train_batch['labels'].shape)
     print(sample_val_batch['labels'].shape)
-    print("sample_val_batch is:", sample_val_batch)
+    print(sample_train_batch['target_lens'].shape)
+    print(sample_val_batch['target_lens'].shape)
 
 
 

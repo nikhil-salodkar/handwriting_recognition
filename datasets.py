@@ -8,7 +8,8 @@ from PIL import Image
 
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
-from torchvision.transforms import Compose, Resize, ToTensor, Grayscale
+from torchvision.transforms import Compose, Resize, ToTensor, Grayscale, RandomRotation, RandomApply, \
+    GaussianBlur, CenterCrop
 
 
 class KaggleHandwrittenNames(Dataset):
@@ -44,15 +45,19 @@ class KaggleHandwritingDataModule(pl.LightningDataModule):
         self.val_data = val_data
         self.train_batch_size = hparams['train_batch_size']
         self.val_batch_size = hparams['val_batch_size']
-        self.transforms = Compose([Resize((hparams['input_height'], hparams['input_height'])), Grayscale(),
+        self.transforms = Compose([Resize((hparams['input_height'], hparams['input_width'])), Grayscale(),
                                    ToTensor()])
+        applier1 = RandomApply(transforms=[RandomRotation(10), GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))], p=0.5)
+        applier2 = RandomApply(transforms=[CenterCrop((hparams['input_height'] - 1, hparams['input_width'] - 2))], p=0.5)
+        self.train_transforms = Compose([applier2, Resize((hparams['input_height'], hparams['input_width'])), Grayscale(),
+                                   applier1, ToTensor()])
         self.train_img_path = hparams['train_img_path']
         self.val_img_path = hparams['val_img_path']
         self.label_to_index = label_to_index
 
     def setup(self, stage: Optional[str] = None):
         if stage == 'fit' or stage is None:
-            self.train = KaggleHandwrittenNames(self.train_data, self.transforms, self.label_to_index, self.train_img_path, )
+            self.train = KaggleHandwrittenNames(self.train_data, self.train_transforms, self.label_to_index, self.train_img_path)
             self.val = KaggleHandwrittenNames(self.val_data, self.transforms, self.label_to_index, self.val_img_path)
 
     def custom_collate(data):
@@ -90,8 +95,9 @@ def test_kaggle_handwritting():
         'train_img_path': './data/kaggle-handwriting-recognition/train_v2/train/',
         'lr': 1e-3, 'val_img_path': './data/kaggle-handwriting-recognition/validation_v2/validation/',
         'test_img_path': './data/kaggle-handwriting-recognition/test_v2/test/',
-        'data_path': './data/kaggle-handwriting-recognition',
-        'train_batch_size': 64, 'val_batch_size': 1024, 'input_height': 128,
+        'data_path': './data/kaggle-handwriting-recognition', 'gru_input_size': 256,
+        'train_batch_size': 64, 'val_batch_size': 256, 'input_height': 36, 'input_width': 324, 'gru_hidden_size': 128,
+        'gru_num_layers': 1, 'num_classes': 28
     }
     label_to_index = {' ': 0, '-': 1, 'A': 2, 'B': 3, 'C': 4, 'D': 5, 'E': 6, 'F': 7, 'G': 8, 'H': 9, 'I': 10, 'J': 11,
                       'K': 12, 'L': 13, 'M': 14, 'N': 15, 'O': 16, 'P': 17, 'Q': 18, 'R': 19, 'S': 20, 'T': 21, 'U': 22,

@@ -1,14 +1,9 @@
 import os
 from torchvision.transforms import Compose, Resize, ToTensor
-from torchvision.utils import make_grid
 import pandas as pd
-import numpy as np
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms.functional as Func
 import pytorch_lightning as pl
-import torch.distributions as td
 from datasets import KaggleHandwritingDataModule
 
 
@@ -25,7 +20,7 @@ class HandwritingRecognitionCNN(nn.Module):
     def __init__(self):
         super().__init__()
         self.image_feature_extractor = nn.Sequential(
-            nn.Conv2d(1, 32, stride=1, kernel_size=3, bias=False),
+            nn.Conv2d(1, 32, stride=(1, 2), kernel_size=3, bias=False),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             # PrintLayer(),
@@ -37,9 +32,10 @@ class HandwritingRecognitionCNN(nn.Module):
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
             # PrintLayer(),
-            nn.Conv2d(128, 256, stride=1, kernel_size=3, padding='same', bias=False),
+            nn.Conv2d(128, 256, stride=(1, 2), kernel_size=3, bias=False),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
+            # PrintLayer()
         )
 
     def forward(self, x):
@@ -64,14 +60,18 @@ class HandwritingRecognition(nn.Module):
         super().__init__()
         self.cnn_feature_extractor = HandwritingRecognitionCNN()
         self.gru = HandwritingRecognitionGRU(gru_input_size, gru_hidden, gru_layers, num_classes+1)
-        self.linear = nn.Linear(7680, 256)
+        self.linear1 = nn.Linear(4864, 512)
+        self.activation = nn.ReLU(inplace=True)
+        self.dropout = nn.Dropout(p=0.4)
+        self.linear2 = nn.Linear(512, 256)
 
     def forward(self, X):
         out = self.cnn_feature_extractor(X)
-        batch_size, channels, width, height = out.size()
+        batch_size, channels, height, width = out.size()
         out = out.view(batch_size, -1, height)
         out = out.permute(0, 2, 1)
-        out = self.linear(out)
+        out = self.linear1(out)
+        out = self.activation(self.linear2(out))
         out = self.gru(out)
         out = out.permute(1, 0, 2)
         return out
@@ -83,9 +83,9 @@ def test_modelling():
         'train_img_path': './data/kaggle-handwriting-recognition/train_v2/train/',
         'lr': 1e-3, 'val_img_path': './data/kaggle-handwriting-recognition/validation_v2/validation/',
         'test_img_path': './data/kaggle-handwriting-recognition/test_v2/test/',
-        'data_path': './data/kaggle-handwriting-recognition',
-        'train_batch_size': 64, 'val_batch_size': 1024, 'input_height': 128, 'bottleneck_dim': 64, 'gru_hidden_size': 128,
-        'gru_num_layers': 2, 'num_classes': 28
+        'data_path': './data/kaggle-handwriting-recognition', 'gru_input_size': 256,
+        'train_batch_size': 64, 'val_batch_size': 256, 'input_height': 36, 'input_width': 324, 'gru_hidden_size': 128,
+        'gru_num_layers': 1, 'num_classes': 28
     }
     label_to_index = {' ': 0, '-': 1, 'A': 2, 'B': 3, 'C': 4, 'D': 5, 'E': 6, 'F': 7, 'G': 8, 'H': 9, 'I': 10, 'J': 11,
                       'K': 12, 'L': 13, 'M': 14, 'N': 15, 'O': 16, 'P': 17, 'Q': 18, 'R': 19, 'S': 20, 'T': 21, 'U': 22,
@@ -103,8 +103,14 @@ def test_modelling():
     sample_val_module = sample_module.val_dataloader()
     sample_train_batch = next(iter(sample_train_module))
     sample_val_batch = next(iter(sample_val_module))
-    model = HandwritingRecognition(hparams['num_classes'])
-    output = model(sample_train_batch['transformed_images'], sample_train_batch['labels'], sample_train_batch['target_lens'])
+    # cnn_model = HandwritingRecognitionCNN()
+    # cnn_out = cnn_model(sample_train_batch['transformed_images'])
+    # print('cnn_output:', cnn_out.shape)
+    model = HandwritingRecognition(hparams['gru_input_size'], hparams['gru_hidden_size'],
+                           hparams['gru_num_layers'], hparams['num_classes'])
+    output = model(sample_train_batch['transformed_images'])
+    print("the output shape:", output.shape)
+    # output = model(sample_train_batch['transformed_images'])
     # print(output.shape)
     # print("starting gru..")
     # model_gru = HandwritingRecognitionGRU(4, hparams['bottleneck_dim'], hparams['gru_hidden_size'],

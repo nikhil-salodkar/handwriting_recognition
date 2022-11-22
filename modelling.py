@@ -45,7 +45,7 @@ class HandwritingRecognitionCNN(nn.Module):
 class HandwritingRecognitionGRU(nn.Module):
     def __init__(self, input_dim, hidden_size, num_layers, num_classes):
         super().__init__()
-        self.gru_layer = nn.GRU(input_dim, hidden_size, num_layers, batch_first=True, bidirectional=True)
+        self.gru_layer = nn.GRU(input_dim, hidden_size, num_layers, batch_first=True, bidirectional=True, dropout=0.3)
         self.output = nn.Linear(hidden_size * 2, num_classes)
 
     def forward(self, x):

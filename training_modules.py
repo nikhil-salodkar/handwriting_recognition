@@ -20,7 +20,7 @@ class HandwritingRecogTrainModule(pl.LightningModule):
         self.chars = ''.join(self.keys)
         self.model = HandwritingRecognition(hparams['gru_input_size'], hparams['gru_hidden_size'],
                                             hparams['gru_num_layers'], hparams['num_classes'])
-        self.criterion = nn.CTCLoss(blank=28, zero_infinity=True)
+        self.criterion = nn.CTCLoss(blank=28, zero_infinity=True, reduction='none')
         self.transforms = Compose([Resize((hparams['input_height'], hparams['input_width'])), Grayscale(),
                                    ToTensor()])
         self.char_metric = CharErrorRate()

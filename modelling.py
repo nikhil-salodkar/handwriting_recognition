@@ -48,8 +48,8 @@ class HandwritingRecognitionGRU(nn.Module):
         self.gru_layer = nn.GRU(input_dim, hidden_size, num_layers, batch_first=True, bidirectional=True)
         self.output = nn.Linear(hidden_size * 2, num_classes)
 
-    def forward(self, X):
-        recurrent_output, _ = self.gru_layer(X)
+    def forward(self, x):
+        recurrent_output, _ = self.gru_layer(x)
         out = self.output(recurrent_output)
         out = F.log_softmax(out, dim=2)
         return out
@@ -60,25 +60,30 @@ class HandwritingRecognition(nn.Module):
         super().__init__()
         self.cnn_feature_extractor = HandwritingRecognitionCNN()
         self.gru = HandwritingRecognitionGRU(gru_input_size, gru_hidden, gru_layers, num_classes+1)
-        self.linear1 = nn.Linear(4864, 512)
+        self.linear1 = nn.Linear(1280, 512)
         self.activation = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout(p=0.4)
         self.linear2 = nn.Linear(512, 256)
 
-    def forward(self, X):
-        out = self.cnn_feature_extractor(X)
-        batch_size, channels, height, width = out.size()
+    def forward(self, x):
+        out = self.cnn_feature_extractor(x)
+        batch_size, channels, width, height = out.size()
+        # print(batch_size, channels, height, width)
         out = out.view(batch_size, -1, height)
         out = out.permute(0, 2, 1)
+        # print(out.shape)
         out = self.linear1(out)
+        # print(out.shape)
         out = self.activation(self.linear2(out))
+        # print(out.shape)
         out = self.gru(out)
+        # print(out.shape)
         out = out.permute(1, 0, 2)
         return out
 
 
 def test_modelling():
-    pl.seed_everything(2488)
+    pl.seed_everything(6579)
     hparams = {
         'train_img_path': './data/kaggle-handwriting-recognition/train_v2/train/',
         'lr': 1e-3, 'val_img_path': './data/kaggle-handwriting-recognition/validation_v2/validation/',

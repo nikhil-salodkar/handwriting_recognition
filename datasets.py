@@ -127,6 +127,5 @@ def test_kaggle_handwritting():
     print(sample_val_batch['target_lens'].shape)
 
 
-
 if __name__ == '__main__':
     test_kaggle_handwritting()

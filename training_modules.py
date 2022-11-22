@@ -2,9 +2,9 @@ import os
 from PIL import Image
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from ctc_decoder import best_path, beam_search
 import pytorch_lightning as pl
+from torchmetrics import CharErrorRate
 from torchvision.transforms import Compose, Resize, Grayscale, ToTensor
 from torchvision.utils import make_grid
 
@@ -16,13 +16,14 @@ class HandwritingRecogTrainModule(pl.LightningModule):
         super().__init__()
         self.lr = hparams['lr']
         self.index_to_labels = index_to_labels
-        keys = label_to_index.keys()
-        self.chars = ''.join(keys)
+        self.keys = label_to_index.keys()
+        self.chars = ''.join(self.keys)
         self.model = HandwritingRecognition(hparams['gru_input_size'], hparams['gru_hidden_size'],
                                             hparams['gru_num_layers'], hparams['num_classes'])
         self.criterion = nn.CTCLoss(blank=28, zero_infinity=True)
         self.transforms = Compose([Resize((hparams['input_height'], hparams['input_width'])), Grayscale(),
                                    ToTensor()])
+        self.char_metric = CharErrorRate()
 
     def forward(self, path, image_name):
         the_image = Image.open(os.path.join(path, image_name))
@@ -65,15 +66,18 @@ class HandwritingRecogTrainModule(pl.LightningModule):
             for pred in preds:
                 actual_predictions.append(best_path(pred, self.chars))
             exact_matches = 0
+            actual_ground_truths = []
             for i, predicted_string in enumerate(actual_predictions):
                 ground_truth_sample = ground_truth[i][0:target_lens[i]]
                 ground_truth_string = [self.index_to_labels[index] for index in ground_truth_sample]
                 ground_truth_string = ''.join(ground_truth_string)
+                actual_ground_truths.append(ground_truth_string)
                 if predicted_string == ground_truth_string:
                     exact_matches += 1
             exact_match_percentage = (exact_matches / len(preds)) * 100
-            self.log_dict({'train-loss': loss, 'train-exact-match': exact_match_percentage}, prog_bar=True, on_epoch=True,
-                      on_step=True)
+            char_error_rate = self.char_metric(actual_predictions, actual_ground_truths)
+            self.log_dict({'train-loss': loss, 'train-exact-match': exact_match_percentage,
+                           'train-char_error_rate': char_error_rate}, prog_bar=True, on_epoch=True, on_step=False)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -89,26 +93,25 @@ class HandwritingRecogTrainModule(pl.LightningModule):
         for pred in preds:
             actual_predictions.append(best_path(pred, self.chars))
         exact_matches = 0
-        actual_ground_truth = []
+        actual_ground_truths = []
         for i, predicted_string in enumerate(actual_predictions):
             ground_truth_sample = ground_truth[i][0:target_lens[i]]
             ground_truth_string = [self.index_to_labels[index] for index in ground_truth_sample]
             ground_truth_string = ''.join(ground_truth_string)
-            actual_ground_truth.append(ground_truth_string)
+            actual_ground_truths.append(ground_truth_string)
             if predicted_string == ground_truth_string:
                 exact_matches += 1
-
+        char_error_rate = self.char_metric(actual_predictions, actual_ground_truths)
         exact_match_percentage = (exact_matches / len(preds)) * 100
         if batch_idx % self.trainer.num_val_batches[0] == 0:
             small_batch = batch['transformed_images'][0:16]
             small_batch_predictions = actual_predictions[0:16]
-            small_batch_ground = actual_ground_truth[0:16]
             captions = small_batch_predictions
             sampled_img_grid = make_grid(small_batch)
             self.logger.log_image('Sample_Images', [sampled_img_grid], caption=[str(captions)])
 
-        self.log_dict({'val-loss': loss, 'val-exact-match': exact_match_percentage}, prog_bar=False, on_epoch=True,
-                      on_step=False)
+        self.log_dict({'val-loss': loss, 'val-exact-match': exact_match_percentage,
+                       'val-char-error-rate': char_error_rate}, prog_bar=False, on_epoch=True, on_step=False)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)

@@ -109,10 +109,6 @@ def test_kaggle_handwritting():
     val_df = pd.read_csv(os.path.join(hparams['data_path'], 'val_new.csv'))
     val_df = val_df[val_df.word_type == 'normal_word']
     val_df = val_df.sample(frac=1).reset_index(drop=True)
-    # sample_transforms = Compose([Resize((hparams['input_height'], hparams['input_height'])), Grayscale(),
-    #                                ToTensor()])
-    # sample_data = KaggleHandwrittenNames(train_df, sample_transforms, label_to_index, hparams['train_img_path'])
-    # print(sample_data[0], sample_data[456])
     sample_module = KaggleHandwritingDataModule(train_df, val_df, hparams, label_to_index)
     sample_module.setup()
     sample_train_module = sample_module.train_dataloader()

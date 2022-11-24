@@ -1,8 +1,9 @@
 import os
+
 from PIL import Image
 import torch
 import torch.nn as nn
-from ctc_decoder import best_path, beam_search
+from ctc_decoder import best_path
 import pytorch_lightning as pl
 from torchmetrics import CharErrorRate
 from torchvision.transforms import Compose, Resize, Grayscale, ToTensor
@@ -14,28 +15,26 @@ from modelling import HandwritingRecognition
 class HandwritingRecogTrainModule(pl.LightningModule):
     def __init__(self, hparams, index_to_labels, label_to_index):
         super().__init__()
-        self.lr = hparams['lr']
-        self.index_to_labels = index_to_labels
-        self.keys = label_to_index.keys()
-        self.chars = ''.join(self.keys)
-        self.model = HandwritingRecognition(hparams['gru_input_size'], hparams['gru_hidden_size'],
-                                            hparams['gru_num_layers'], hparams['num_classes'])
-        self.criterion = nn.CTCLoss(blank=28, zero_infinity=True, reduction='none')
-        self.transforms = Compose([Resize((hparams['input_height'], hparams['input_width'])), Grayscale(),
-                                   ToTensor()])
+        # save_hyperparameters saves the parameters in the signature
+        self.save_hyperparameters()
+        self.chars = ' -ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        self.model = HandwritingRecognition(self.hparams['hparams']['gru_input_size'], self.hparams['hparams']['gru_hidden_size'],
+                                            self.hparams['hparams']['gru_num_layers'], self.hparams['hparams']['num_classes'])
+        self.criterion = nn.CTCLoss(blank=28, zero_infinity=True, reduction='mean')
+        self.transforms = Compose([Resize((self.hparams['hparams']['input_height'], self.hparams['hparams']['input_width'])), Grayscale(),
+                                                              ToTensor()])
         self.char_metric = CharErrorRate()
 
-    def forward(self, path, image_name):
-        the_image = Image.open(os.path.join(path, image_name))
+    def forward(self, the_image):
         transformed_image = self.transforms(the_image)
         transformed_image = torch.unsqueeze(transformed_image, 0)
-        out = self.model(transformed_image)
+        with torch.inference_mode():
+            out = self.model(transformed_image)
         out = out.permute(1, 0, 2)
-        out = out.argmax(2)
-        out = out.view(-1)
-        out = out.numpy()
-        predicted_string = [self.index_to_labels[index] for index in out]
-        predicted_string = ''.join(predicted_string)
+        out = out.view(-1, out.size(2))
+        out = torch.exp(out)
+        out = out.cpu().detach().numpy()
+        predicted_string = best_path(out, self.chars)
         return predicted_string
 
     def intermediate_operation(self, batch):
@@ -69,7 +68,7 @@ class HandwritingRecogTrainModule(pl.LightningModule):
             actual_ground_truths = []
             for i, predicted_string in enumerate(actual_predictions):
                 ground_truth_sample = ground_truth[i][0:target_lens[i]]
-                ground_truth_string = [self.index_to_labels[index] for index in ground_truth_sample]
+                ground_truth_string = [self.hparams.index_to_labels[index] for index in ground_truth_sample]
                 ground_truth_string = ''.join(ground_truth_string)
                 actual_ground_truths.append(ground_truth_string)
                 if predicted_string == ground_truth_string:
@@ -96,7 +95,7 @@ class HandwritingRecogTrainModule(pl.LightningModule):
         actual_ground_truths = []
         for i, predicted_string in enumerate(actual_predictions):
             ground_truth_sample = ground_truth[i][0:target_lens[i]]
-            ground_truth_string = [self.index_to_labels[index] for index in ground_truth_sample]
+            ground_truth_string = [self.hparams.index_to_labels[index] for index in ground_truth_sample]
             ground_truth_string = ''.join(ground_truth_string)
             actual_ground_truths.append(ground_truth_string)
             if predicted_string == ground_truth_string:
@@ -114,7 +113,7 @@ class HandwritingRecogTrainModule(pl.LightningModule):
                        'val-char-error-rate': char_error_rate}, prog_bar=False, on_epoch=True, on_step=False)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
+        return torch.optim.Adam(self.parameters(), lr=self.hparams['hparams']['lr'])
 
 
 if __name__ == '__main__':
@@ -134,7 +133,9 @@ if __name__ == '__main__':
                       'K': 12, 'L': 13, 'M': 14, 'N': 15, 'O': 16, 'P': 17, 'Q': 18, 'R': 19, 'S': 20, 'T': 21, 'U': 22,
                       'V': 23, 'W': 24, 'X': 25, 'Y': 26, 'Z': 27}
 
-    model = HandwritingRecogTrainModule(hparams, index_to_labels, label_to_index=label_to_index)
-    output = model(hparams['train_img_path'], 'TRAIN_96628.jpg')
+    model = HandwritingRecogTrainModule.load_from_checkpoint('./lightning_logs/CNNR_run_64_2grulayers_0.3dropout/3182ng3f'
+                                                             '/checkpoints/epoch=47-val-loss=0.190-val-exact-match=83.1511001586914-val-char-error-rate=0.042957037687301636.ckpt')
+    input_image = Image.open(os.path.join(hparams['train_img_path'], 'TRAIN_96628.jpg'))
+    output = model(input_image)
     print(output)
 

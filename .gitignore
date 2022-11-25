@@ -3,3 +3,4 @@ lightning_logs/
 notebooks/nohup.out
 .idea/
 __pycache__/
+final-models/

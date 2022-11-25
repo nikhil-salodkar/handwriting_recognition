@@ -1,5 +1,8 @@
 import os
 import streamlit as st
+import torch
+from ctc_decoder import best_path, beam_search
+from torchvision.transforms import Compose, Resize, Grayscale, ToTensor
 
 from training_modules import HandwritingRecogTrainModule
 
@@ -24,7 +27,8 @@ def get_model_details():
     index_to_labels = {0: ' ', 1: '-', 2: 'A', 3: 'B', 4: 'C', 5: 'D', 6: 'E', 7: 'F', 8: 'G', 9: 'H', 10: 'I',
                        11: 'J', 12: 'K', 13: 'L', 14: 'M', 15: 'N', 16: 'O', 17: 'P', 18: 'Q', 19: 'R', 20: 'S',
                        21: 'T', 22: 'U', 23: 'V', 24: 'W', 25: 'X', 26: 'Y', 27: 'Z'}
-    return model_path, hparams, label_to_index, index_to_labels
+    transforms = Compose([Resize((hparams['input_height'], hparams['input_width'])), Grayscale(), ToTensor()])
+    return model_path, hparams, label_to_index, index_to_labels, transforms
 
 
 @st.experimental_memo
@@ -35,8 +39,13 @@ def load_trained_model(model_path):
 
 
 def get_predictions(image):
-    model_path, hparams, label_to_index, index_to_labels = get_model_details()
+    model_path, hparams, label_to_index, index_to_labels, transforms = get_model_details()
+    transformed_image = transforms(image)
+    transformed_image = torch.unsqueeze(transformed_image, 0)
     model = load_trained_model(model_path)
-    model_prediction = model(image)
+    model.eval()
+    out = model(transformed_image)
+    out = out.cpu().detach().numpy()
+    predicted_string = beam_search(out, model.chars, beam_width=2)
 
-    return model_prediction
+    return predicted_string

@@ -24,8 +24,8 @@ def train_model(train_module, data_module):
     checkpoint_callback = ModelCheckpoint(filename='{epoch}-{val-loss:.3f}-{val-exact-match}-{val-char-error-rate}',
                                           save_top_k=1, monitor='val-char-error-rate', mode='min', save_last=True)
     wandb_logger = WandbLogger(project="handwriting_recognition_kaggle", save_dir='./lightning_logs',
-                               name='CNNR_run_64_2grulayers_0.3dropout')
-    early_stopping = EarlyStopping(monitor="val-char-error-rate", patience=5, verbose=False, mode="min")
+                               name='CNNR_run_new_version')
+    early_stopping = EarlyStopping(monitor="val-char-error-rate", patience=10, verbose=False, mode="min")
     model_summary = ModelSummary(max_depth=-1)
     # lr_monitor = LearningRateMonitor(logging_interval='step')
 

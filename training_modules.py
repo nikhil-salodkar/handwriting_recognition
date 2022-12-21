@@ -25,18 +25,10 @@ class HandwritingRecogTrainModule(pl.LightningModule):
         self.char_metric = CharErrorRate()
 
     def forward(self, the_image):
-        # transformed_image = self.transforms(the_image)
-        # transformed_image = torch.unsqueeze(transformed_image, 0)
-        # self.model.eval()
-        with torch.inference_mode():
-            out = self.model(the_image)
+        out = self.model(the_image)
         out = out.permute(1, 0, 2)
-        out = out.view(-1, out.size(2))
         out = torch.exp(out)
         return out
-        # out = out.cpu().detach().numpy()
-        # predicted_string = best_path(out, self.chars)
-        # return predicted_string
 
     def intermediate_operation(self, batch):
         transformed_images = batch['transformed_images']
@@ -118,9 +110,24 @@ class HandwritingRecogTrainModule(pl.LightningModule):
 
 
 def convert_to_torchscript(trained_path):
-    model = HandwritingRecogTrainModule.load_from_checkpoint(trained_path)
+    hparams = {
+        'train_img_path': './data/kaggle-handwriting-recognition/train_v2/train/',
+        'lr': 1e-3, 'val_img_path': './data/kaggle-handwriting-recognition/validation_v2/validation/',
+        'test_img_path': './data/kaggle-handwriting-recognition/test_v2/test/',
+        'data_path': './data/kaggle-handwriting-recognition', 'gru_input_size': 256,
+        'train_batch_size': 64, 'val_batch_size': 256, 'input_height': 36, 'input_width': 324, 'gru_hidden_size': 128,
+        'gru_num_layers': 1, 'num_classes': 28
+    }
+    index_to_labels = {0: ' ', 1: '-', 2: 'A', 3: 'B', 4: 'C', 5: 'D', 6: 'E', 7: 'F', 8: 'G', 9: 'H', 10: 'I',
+                       11: 'J', 12: 'K', 13: 'L', 14: 'M', 15: 'N', 16: 'O', 17: 'P', 18: 'Q', 19: 'R', 20: 'S',
+                       21: 'T', 22: 'U', 23: 'V', 24: 'W', 25: 'X', 26: 'Y', 27: 'Z'}
+    label_to_index = {' ': 0, '-': 1, 'A': 2, 'B': 3, 'C': 4, 'D': 5, 'E': 6, 'F': 7, 'G': 8, 'H': 9, 'I': 10, 'J': 11,
+                      'K': 12, 'L': 13, 'M': 14, 'N': 15, 'O': 16, 'P': 17, 'Q': 18, 'R': 19, 'S': 20, 'T': 21, 'U': 22,
+                      'V': 23, 'W': 24, 'X': 25, 'Y': 26, 'Z': 27}
+    model = HandwritingRecogTrainModule(hparams, index_to_labels, label_to_index)
     script = model.to_torchscript()
-    torch.jit.save(script, './final-models/torchscript-model/handwritten-name.pt')
+    print("The script:", script)
+    torch.jit.save(script, './final-models/torchscript-model/handwritten-name_new.pt')
 
 def test_model():
     pl.seed_everything(2564)
@@ -140,8 +147,8 @@ def test_model():
                       'V': 23, 'W': 24, 'X': 25, 'Y': 26, 'Z': 27}
 
     model = HandwritingRecogTrainModule.load_from_checkpoint(
-        './lightning_logs/CNNR_run_64_2grulayers_0.3dropout/3182ng3f'
-        '/checkpoints/epoch=47-val-loss=0.190-val-exact-match=83.1511001586914-val-char-error-rate=0.042957037687301636.ckpt')
+        './lightning_logs/CNNR_run_new_version/108xqa9y/checkpoints/'
+        'epoch=21-val-loss=0.206-val-exact-match=81.46109771728516-val-char-error-rate=0.04727236181497574.ckpt')
     input_image = Image.open(os.path.join(hparams['train_img_path'], 'TRAIN_96628.jpg'))
     output = model(input_image)
     print(output)
@@ -150,25 +157,27 @@ def test_inference():
     transforms = Compose([Resize((36, 324)), Grayscale(), ToTensor()])
     input_image = Image.open(os.path.join('./data/kaggle-handwriting-recognition/train_v2/train/', 'TRAIN_96628.jpg'))
     transformed_image = transforms(input_image)
-    path = './lightning_logs/CNNR_run_64_2grulayers_0.3dropout/3182ng3f/checkpoints'
-    model_weights = 'epoch=47-val-loss=0.190-val-exact-match=83.1511001586914-val-char-error-rate=0.042957037687301636.ckpt'
-    trained_path = os.path.join(path, model_weights)
-    model = HandwritingRecogTrainModule.load_from_checkpoint(trained_path)
-    transformed_image = torch.unsqueeze(transformed_image, 0)
-    model.eval()
-    out = model(transformed_image)
+    # path = './lightning_logs/CNNR_run_64_2grulayers_0.3dropout/3182ng3f/checkpoints'
+    # model_weights = 'epoch=47-val-loss=0.190-val-exact-match=83.1511001586914-val-char-error-rate=0.042957037687301636.ckpt'
+    # trained_path = os.path.join(path, model_weights)
+    # model = HandwritingRecogTrainModule.load_from_checkpoint(trained_path)
+    # transformed_image = torch.unsqueeze(transformed_image, 0)
+    # model.eval()
+    # out = model(transformed_image)
+    script_path = './final-models/torchscript-model/handwritten-name_new.pt'
+    scripted_module = torch.jit.load(script_path)
+    out = scripted_module(transformed_image)
+    print("The final out shape:", out.shape)
+    print("The final out is :", out)
     out = out.cpu().detach().numpy()
-    predicted_string = beam_search(out, model.chars, beam_width=2)
+    chars = ' -ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    for sample in out:
+        predicted_string = beam_search(sample, chars, beam_width=2)
     print(predicted_string)
-    # script_path = './final-models/torchscript-model/handwritten-name.pt'
-    # scripted_module = torch.jit.load(script_path)
-    # output = scripted_module(transformed_image)
-    # print(output)
-    # print(output.shape)
 
 def test_convert_to_torchscript():
-    path = './lightning_logs/CNNR_run_64_2grulayers_0.3dropout/3182ng3f/checkpoints'
-    model_weights = 'epoch=47-val-loss=0.190-val-exact-match=83.1511001586914-val-char-error-rate=0.042957037687301636.ckpt'
+    path = './lightning_logs/CNNR_run_new_version/108xqa9y/checkpoints/'
+    model_weights = 'epoch=21-val-loss=0.206-val-exact-match=81.46109771728516-val-char-error-rate=0.04727236181497574.ckpt'
     trained_path = os.path.join(path, model_weights)
     convert_to_torchscript(trained_path)
 

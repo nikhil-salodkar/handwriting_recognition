@@ -10,6 +10,7 @@ from training_modules import HandwritingRecogTrainModule
 
 
 def get_data(path):
+    """function to return train and validation for training by reading already processed and clean dataset"""
     train_df = pd.read_csv(os.path.join(path, 'train_new.csv'))
     val_df = pd.read_csv(os.path.join(path, 'val_new.csv'))
     train_df = train_df[train_df.IDENTITY != 'UNREADABLE']
@@ -27,10 +28,6 @@ def train_model(train_module, data_module):
                                name='CNNR_run_new_version')
     early_stopping = EarlyStopping(monitor="val-char-error-rate", patience=10, verbose=False, mode="min")
     model_summary = ModelSummary(max_depth=-1)
-    # lr_monitor = LearningRateMonitor(logging_interval='step')
-
-    # trainer = pl.Trainer(accelerator='gpu', fast_dev_run=True, max_epochs=200,
-    #                      callbacks=[checkpoint_callback, early_stopping], precision=16)
 
     trainer = pl.Trainer(accelerator='gpu', fast_dev_run=False, max_epochs=100,
                          callbacks=[checkpoint_callback, early_stopping, model_summary], logger=wandb_logger,

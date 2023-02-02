@@ -71,6 +71,8 @@ class KaggleHandwritingDataModule(pl.LightningDataModule):
             transformed_images.append(d['transformed_image'])
             labels.append(d['label'])
             target_lens.append(d['target_len'])
+        # pad_sequence pads all batch items to the longest length sequence in the batch because labels
+        # can be of variable length
         batch_labels = pad_sequence(labels, batch_first=True, padding_value=-1)
         transformed_images = torch.stack(transformed_images)
         target_lens = torch.tensor(target_lens)

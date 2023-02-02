@@ -23,7 +23,6 @@ st.write("Select one from these available samples: ")
 current_index = st.session_state['image_index']
 current_image = Image.open(os.path.join(sample_path, sample_files[current_index]))
 
-# next = st.button('next_image')
 prev_button, next_button = st.columns(2)
 with prev_button:
     prev = st.button('prev_image')
@@ -37,15 +36,10 @@ st.session_state['image_index'] = current_index
 sample_image = Image.open(os.path.join(sample_path, sample_files[current_index]))
 st.image(sample_image, caption='Chosen image')
 
-use_sample_image = st.button("Use this Sample")
-if use_sample_image is True:
-    st.session_state['which_button'] = 'sample_button'
-
 predict_clicked = st.button("Get prediction")
 if predict_clicked:
     which_button = st.session_state['which_button']
     if which_button == 'sample_button':
         predictions = get_predictions(sample_image)
-    st.markdown('**The model predictions along with their probabilities are :**')
+    st.markdown('**The model predictions are :**')
     st.write(predictions)
-    # st.table(predictions)

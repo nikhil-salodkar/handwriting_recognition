@@ -14,7 +14,7 @@ from modelling import HandwritingRecognition
 class HandwritingRecogTrainModule(pl.LightningModule):
     def __init__(self, hparams, index_to_labels, label_to_index):
         super().__init__()
-        # save_hyperparameters saves the parameters in the signature
+        # save_hyperparameters saves the parameters in the signature in the form of dict
         self.save_hyperparameters()
         self.chars = ' -ABCDEFGHIJKLMNOPQRSTUVWXYZ'
         self.model = HandwritingRecognition(self.hparams['hparams']['gru_input_size'], self.hparams['hparams']['gru_hidden_size'],
@@ -95,6 +95,7 @@ class HandwritingRecogTrainModule(pl.LightningModule):
                 exact_matches += 1
         char_error_rate = self.char_metric(actual_predictions, actual_ground_truths)
         exact_match_percentage = (exact_matches / len(preds)) * 100
+        # visualizing predictions results for validation samples every epoch
         if batch_idx % self.trainer.num_val_batches[0] == 0:
             small_batch = batch['transformed_images'][0:16]
             small_batch_predictions = actual_predictions[0:16]
@@ -153,6 +154,7 @@ def test_model():
     output = model(input_image)
     print(output)
 
+
 def test_inference():
     transforms = Compose([Resize((36, 324)), Grayscale(), ToTensor()])
     input_image = Image.open(os.path.join('./data/kaggle-handwriting-recognition/train_v2/train/', 'TRAIN_96628.jpg'))
@@ -174,6 +176,7 @@ def test_inference():
     for sample in out:
         predicted_string = beam_search(sample, chars, beam_width=2)
     print(predicted_string)
+
 
 def test_convert_to_torchscript():
     path = './lightning_logs/CNNR_run_new_version/108xqa9y/checkpoints/'

@@ -16,6 +16,7 @@ class PrintLayer(nn.Module):
 
 
 class HandwritingRecognitionCNN(nn.Module):
+    """Class to enable instantiation of CNN model used for extraction of features from an image"""
     def __init__(self):
         super().__init__()
         self.image_feature_extractor = nn.Sequential(
@@ -38,6 +39,7 @@ class HandwritingRecognitionCNN(nn.Module):
 
 
 class HandwritingRecognitionGRU(nn.Module):
+    """Class to enable instantiation of a GRU sequential model to be applied on CNN features"""
     def __init__(self, input_dim, hidden_size, num_layers, num_classes):
         super().__init__()
         self.gru_layer = nn.GRU(input_dim, hidden_size, num_layers, batch_first=True, bidirectional=True, dropout=0.3)
@@ -51,19 +53,20 @@ class HandwritingRecognitionGRU(nn.Module):
 
 
 class HandwritingRecognition(nn.Module):
+    """Class to merge both CNN and GRU architecture to perform full end to end inference for Handwriting recognition"""
     def __init__(self, gru_input_size, gru_hidden, gru_layers, num_classes):
         super().__init__()
         self.cnn_feature_extractor = HandwritingRecognitionCNN()
         self.gru = HandwritingRecognitionGRU(gru_input_size, gru_hidden, gru_layers, num_classes+1)
         self.linear1 = nn.Linear(1280, 512)
         self.activation = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout(p=0.4)
         self.linear2 = nn.Linear(512, 256)
 
     def forward(self, x):
         out = self.cnn_feature_extractor(x)
-        batch_size, channels, width, height = out.size()
-        out = out.view(batch_size, -1, height)
+        batch_size, channels, height, width = out.size()
+        out = out.view(batch_size, -1, width)
+        # out is reshaped and permuted so that CNN features along width of image should be fed in sequence)
         out = out.permute(0, 2, 1)
         out = self.linear1(out)
         out = self.activation(self.linear2(out))
@@ -80,7 +83,7 @@ def test_modelling():
         'test_img_path': './data/kaggle-handwriting-recognition/test_v2/test/',
         'data_path': './data/kaggle-handwriting-recognition', 'gru_input_size': 256,
         'train_batch_size': 64, 'val_batch_size': 256, 'input_height': 36, 'input_width': 324, 'gru_hidden_size': 128,
-        'gru_num_layers': 1, 'num_classes': 28
+        'gru_num_layers': 2, 'num_classes': 28
     }
     label_to_index = {' ': 0, '-': 1, 'A': 2, 'B': 3, 'C': 4, 'D': 5, 'E': 6, 'F': 7, 'G': 8, 'H': 9, 'I': 10, 'J': 11,
                       'K': 12, 'L': 13, 'M': 14, 'N': 15, 'O': 16, 'P': 17, 'Q': 18, 'R': 19, 'S': 20, 'T': 21, 'U': 22,
@@ -100,6 +103,7 @@ def test_modelling():
                            hparams['gru_num_layers'], hparams['num_classes'])
     output = model(sample_train_batch['transformed_images'])
     print("the output shape:", output.shape)
+
 
 if __name__ == '__main__':
     test_modelling()

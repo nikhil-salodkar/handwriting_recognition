@@ -9,6 +9,9 @@ from training_modules import HandwritingRecogTrainModule
 
 @st.experimental_memo
 def get_model_details():
+    """
+    function to prepare some necessary input to be fed to the model while prediction
+    """
     path = './lightning_logs/CNNR_run_64_2grulayers_0.3dropout/3182ng3f/checkpoints'
     model_weights = 'epoch=47-val-loss=0.190-val-exact-match=83.1511001586914-val-char-error-rate=0.042957037687301636.ckpt'
     model_path = os.path.join(path, model_weights)
@@ -33,12 +36,16 @@ def get_model_details():
 
 @st.experimental_memo
 def load_trained_model(model_path):
+    """
+    function to load model and keep in memory for future use
+    """
 
     model = HandwritingRecogTrainModule.load_from_checkpoint(model_path)
     return model
 
 
 def get_predictions(image):
+    """Given an image perform inference and return prediction"""
     model_path, hparams, label_to_index, index_to_labels, transforms = get_model_details()
     transformed_image = transforms(image)
     transformed_image = torch.unsqueeze(transformed_image, 0)
@@ -46,6 +53,7 @@ def get_predictions(image):
     model.eval()
     out = model(transformed_image)
     out = out.cpu().detach().numpy()
-    predicted_string = beam_search(out, model.chars, beam_width=2)
+    prediction = out[0]
+    predicted_string = beam_search(prediction, model.chars, beam_width=2)
 
     return predicted_string
